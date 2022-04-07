@@ -22,8 +22,8 @@ class PathPlan(object):
 
 
     def map_cb(self, msg):
-        pass ## REMOVE AND FILL IN ##
-
+        pass
+        
 
     def odom_cb(self, msg):
         pass ## REMOVE AND FILL IN ##
