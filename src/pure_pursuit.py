@@ -25,7 +25,9 @@ class PurePursuit(object):
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
-        self.pursuit = PurePursuit(self.wheelbase_length)
+        self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_cb, queue_size=1)
+        self.pursuit = OurPurePursuit(self.wheelbase_length)
+
         
     def trajectory_callback(self, msg):
         ''' Clears the currently followed trajectory, and loads the new one from the message
@@ -34,22 +36,39 @@ class PurePursuit(object):
         self.trajectory.clear()
         self.trajectory.fromPoseArray(msg)
 
-        knots = []
-        t_breaks = []
-        for pose in msg:
-            knots.append([pose.position.x, pose.position.y])
-            if len(t_breaks) == 0:
-                t_breaks.append(np.sqrt(pose.position.x**2 + pose.position.y**2)/self.speed)
-            else:
-                t_breaks.append(np.sqrt((knots[len(knots)-1][0]-knots[len(knots)-2][0])**2 + (knots[len(knots)-1][1]-knots[len(knots)-2][1])**2)/self.speed)
+    def odom_cb(self, msg):
+        x, y = msg.pose.pose.position.x, msg.pose.pose.position.y 
+        roll, pitch, yaw = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x,
+                                                                     msg.pose.pose.orientation.y,
+                                                                     msg.pose.pose.orientation.z,
+                                                                     msg.pose.pose.orientation.w])
+        self.pursuit.updatePos(x, y, yaw)
+
+
+
+        if self.trajectory.empty():
+            self.drive(0,0, None, None)
+            return
+
+        #Converting PoseArray message into a numpy array so we can use our own pure pursuit class
+        knots = [np.array([self.trajectory.points[0][0], self.trajectory.points[0][1]])]
+        t_breaks = [0]
+        for pt in self.trajectory.points[1:]:
+            knots.append(np.array([pt[0], pt[1]]))
+            t_breaks.append(np.linalg.norm(knots[-1] - knots[-2])/self.speed + t_breaks[-1] + 1e-3)
         knots = np.array(knots)
-        t_breaks = np.array(t_breaks)
+        t_breaks = np.stack(t_breaks)
 
         traj = LinearTrajectory(t_breaks, knots)
         steer, speed = self.pursuit.adaptiveControl(traj, self.v_function)
-        drive_cmd = self.drive(steer, speed, None, None)
+
+
+        # TODO the speed computed is in the relative reference frame, thus it has the wrong signs
+        drive_cmd = self.drive(steer, abs(speed), None, None)
+
         self.drive_pub.publish(drive_cmd)
-        self.trajectory.publish_viz(duration=0.0)
+        self.trajectory.publish_viz(duration=5.0)
+
 
     def drive(self, theta, speed, theta_dot = None,  acceleration = None):
         """
