@@ -44,18 +44,25 @@ class PathPlan(object):
                                               [          0,            0, 1]]) 
 
         ### INITILIZE PRM ###
+        #collision_step_size = 1
+        #seed = 17
+        #K = 5
+        #self.planner = PRM(msg, collision_step_size, seed, K)
+        #self.planner.GrowRoadMap(5000)
+        #print("Roadmap is grown")
+
         collision_step_size = 1
-        seed = 17
         K = 5
-        self.planner = PRM(msg, collision_step_size, seed, K)
-        
+        self.planner = BiRRT(msg, collision_step_size, 17, 4, 10)
+
+
 
     def odom_cb(self, msg):
-        roll, pitch, yaw = tf.transformations.euler_from_quaternion([msg.pose.orientation.x,
-                                                                     msg.pose.orientation.y,
-                                                                     msg.pose.orientation.z,
-                                                                     msg.pose.orientation.w])
-        x, y = msg.pose.position.x, msg.pose.position.y
+        roll, pitch, yaw = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x,
+                                                                     msg.pose.pose.orientation.y,
+                                                                     msg.pose.pose.orientation.z,
+                                                                     msg.pose.pose.orientation.w])
+        x, y = msg.pose.pose.position.x, msg.pose.pose.position.y
 
         self.H_map_BL_start = np.array([[np.cos(yaw), -np.sin(yaw), x],
                                         [np.sin(yaw),  np.cos(yaw), y],
@@ -79,32 +86,38 @@ class PathPlan(object):
 
         self.plan_path()
         
-    def plan_path(self, start_point, end_point, map):
-        self.H_occupancy_grid_BL_start = np.inv(self.H_map_occupancy_grid).dot(self.H_map_BL_start)
-        self.H_occupancy_grid_BL_goal = np.inv(self.H_map_occupancy_grid).dot(self.H_map_BL_goal)
+    def plan_path(self):
+        self.trajectory.clear()
+        self.H_occupancy_grid_BL_start = np.linalg.inv(self.H_map_occupancy_grid).dot(self.H_map_BL_start)
+        self.H_occupancy_grid_BL_goal = np.linalg.inv(self.H_map_occupancy_grid).dot(self.H_map_BL_goal)
 
-        x_start, y_start = self.H_occupancy_grid_BL_start[0][2],  self.H_occupancy_grid_BL_start[1][2]
-        x_goal, y_goal = self.H_occupancy_grid_BL_goal[0][2],  self.H_occupancy_grid_BL_goal[1][2]
+        x_start, y_start = self.H_occupancy_grid_BL_start[0][-1],  self.H_occupancy_grid_BL_start[1][-1]
+        x_goal, y_goal = self.H_occupancy_grid_BL_goal[0][-1],  self.H_occupancy_grid_BL_goal[1][-1]
 
-        u_start, v_start = int(x_start/self.resolution), int(y_start/self.resolution)
-        u_goal, v_goal = int(x_goal/self.resolution), int(y_goal/self.resolution)
+        u_start, v_start = x_start/self.resolution, y_start/self.resolution
+        u_goal, v_goal = x_goal/self.resolution, y_goal/self.resolution
 
-        sequence = [[u_start, v_start], [u_goal, v_goal]]
-        path, runtime = self.planner.getPath(sequence)
+        sequence = [np.array([u_start, v_start]), np.array([u_goal, v_goal])]
+        output = self.planner.getPath(sequence, path_processing=self.planner.shortcut)
+        if output is None:
+            print("NO PATH FOUND")
+            return None
+        path, runtime = output
 
         path = map(lambda knot: np.array([[1, 0, knot[0]*self.resolution],
                                           [0, 1, knot[1]*self.resolution], 
-                                          [0, 1,      1]]),path)
+                                          [0, 1,      1]]), path)
         path = map(lambda H_occupancy_grid_pt: self.H_map_occupancy_grid.dot(H_occupancy_grid_pt), path)
-        traj = list(map(lambda H_map_pt: Point(H_map_pt[0][0], H_map_pt[0][1]), path))
+        path = map(lambda H: (H[0][-1], H[1][-1]), path)
+        traj = list(map(lambda x: Point(x[0], x[1], 0), path))
         for pt in traj:
-            self.trajectory.add(pt)
+            self.trajectory.addPoint(pt)
 
         # publish trajectory
         self.traj_pub.publish(self.trajectory.toPoseArray())
 
         # visualize trajectory Markers
-        self.trajectory.publish_viz()
+        self.trajectory.publish_viz(duration = 200.0)
 
 
 if __name__=="__main__":
