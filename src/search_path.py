@@ -11,7 +11,7 @@ from utils import LineTrajectory
 from Queue import Queue
 from geometry_msgs.msg import PoseWithCovarianceStamped
 import tf
-
+from visualization_msgs.msg import Marker
 class PathPlan(object):
     """ Listens for goal pose published by RViz and uses it to plan a path from
     current car pose.
@@ -77,15 +77,33 @@ class PathPlan(object):
         get_path, costs = self.a_star_alg(start_point, end_point)
 
         path = self.make_path(get_path, start_point, end_point)
+       
+        marker = Marker()
+        
+        #marker.header = self.make_header("/map")
+        #marker.ns = self.viz_namespace + "/trajectory"
+        #marker.id = 2
+        #marker.type = marker.LINE_STRIP
+        #marker.lifetime = rospy.Duration.from_sec(duration)
+        #marker.action = maker.ADD
+        #marker.scale.x = .3
+        #marker.color.r = 1
+        #marker.color.g = 1
+        #marker.color.b = 1
+        #marker.color.a = 1
+        
+
         
         for i in path:
             point = Point()
+            i = self.pix_to_coord(i)
             point.x = i[0]
             point.y = i[1]
             self.trajectory.addPoint(point)
+         #   marker.points.append(point)
         # publish trajectory
         self.traj_pub.publish(self.trajectory.toPoseArray())
-
+        #self.traj_pub.publish(marker)
         # visualize trajectory Markers
         self.trajectory.publish_viz(10.0)
     
