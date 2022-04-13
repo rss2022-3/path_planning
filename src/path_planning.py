@@ -51,9 +51,8 @@ class PathPlan(object):
         #self.planner.GrowRoadMap(5000)
         #print("Roadmap is grown")
 
-        collision_step_size = 1
-        K = 5
-        self.planner = BiRRT(msg, collision_step_size, 17, 4, 10)
+        collision_step_size = 3
+        self.planner = BiRRT(msg, collision_step_size, None, 20, 10)
 
 
 
@@ -98,7 +97,7 @@ class PathPlan(object):
         u_goal, v_goal = x_goal/self.resolution, y_goal/self.resolution
 
         sequence = [np.array([u_start, v_start]), np.array([u_goal, v_goal])]
-        output = self.planner.getPath(sequence, path_processing=self.planner.shortcut)
+        output = self.planner.getPath(sequence,verbose =True, path_processing=self.planner.shortcut)
         if output is None:
             print("NO PATH FOUND")
             return None
