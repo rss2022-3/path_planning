@@ -8,7 +8,7 @@ import rospkg
 import time, os
 from utils import LineTrajectory
 #import dubins
-from Queue import Queue
+from Queue import PriorityQueue 
 from geometry_msgs.msg import PoseWithCovarianceStamped
 import tf
 from visualization_msgs.msg import Marker
@@ -38,7 +38,7 @@ class PathPlan(object):
         self.x_shift = self.pos.x
         self.y_shift = self.pos.y
         self.res = msg.info.resolution
-        self.grid = np.array(msg.data).reshape((msg.info.height, msg.info.width))
+        self.grid = np.array(msg.data).reshape((msg.info.height, msg.info.width)).T
         print("i the grid got a message",self.grid)
         rospy.loginfo((msg.info.height, msg.info.width))
         #TODO: Add dialation and maybe  shrink grid size  
@@ -72,7 +72,7 @@ class PathPlan(object):
     
     def plan_path(self, start_point, end_point, map):
         ## CODE FOR PATH PLANNING ##
-
+        print("iam running")
         #refrenced https://www.redblobgames.com/pathfinding/a-star/implementation.html
         get_path, costs = self.a_star_alg(start_point, end_point)
 
@@ -119,37 +119,43 @@ class PathPlan(object):
 
     def a_star_alg(self, start, end):
         #TODO: start point may not be formatted correctly
-        frontier = Queue()
+        frontier = [(start,0)]#PriorityQueue()
         print('start', start)
         print('end', end)
-        frontier.put(start, 0)
+        #frontier.put((0, start))
         came_from = {start:None}
         cost_so_far = {start:0}
 
-        while not frontier.empty():
+        found_path = False
+        while len(frontier) != 0:
             #print("i do the A star")
-            curr = frontier.get()
-            
+            frontier = sorted(frontier, key = lambda x: x[1])
+            #curr = frontier.get()
+            curr,_ = frontier.pop(0)
             if curr == end:
-                break
+              found_path = True  
+              break
            
             neighbors = self.get_neighbors(curr)
-            #print('ethan neighbors', self.get_neighbors(curr))    
+            print('ethan neighbors', self.get_neighbors(curr))    
             for node in neighbors:#self.get_neighbors(curr):     
                 new_cost = cost_so_far[curr] + 1
                 if node not in cost_so_far or new_cost < cost_so_far[node]:
                     cost_so_far[node] = new_cost
                     priority = new_cost + self.heur(node, end)
-                    frontier.put(node, priority)
+                    frontier.append((node, priority))
                     came_from[node] = curr
                     
        # print("came from", came_from)
       #  print("distances", cost_so_far)
+        if not found_path:
+          print("path not found")
+          return None
         return came_from, cost_so_far
 
     def pix_to_coord(self, pix):
-
         '''
+        pix = [pix[0],pix[1]] 
         #x and y here may be flipped
         pix[0] = pix[0] * self.res
         pix[1] = pix[1] * self.res
@@ -167,10 +173,10 @@ class PathPlan(object):
         #how do we apply rotation
         '''
         x,y = pix
-        res_x = self.pos.x - x*self.res
-        res_y = self.pos.y - y*self.res
+        res_x = self.pos.x + x*self.res
+        res_y = self.pos.y + y*self.res
         return (res_x, res_y)
-
+        
     def coord_to_pix(self, coord):
         '''
         theta = tf.transformations.euler_from_quaternion((
